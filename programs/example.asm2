@@ -1,0 +1,59 @@
+function main(stdout, stdin, args, program) { // start of main variable namespace, always on the namespaces top
+    // comment
+
+    // variable name must not interfer with keywords and consist of lowercase letters and _
+
+    { // custom variable namespace
+        my_var = 5 // variable creation
+        my_var = 0x0
+        my_var = 0b101010
+        my_var2 = f(my_var)
+    } // rm all namespace variables
+
+    // [my_var] is unaccessable here
+
+    if (cond) { // cond is some var[i] or mem[i][i]
+
+        // put jmp to the point e
+    }
+    else { // associate this position as jmp label and use it in corresponding if instruction
+
+    } // point e
+
+    if (cond) { // else - jump at the end of the namespace
+
+        // no need to put special jumps
+    }
+
+    while (cond) {
+        continue // jmp to the corresponding while start instruction
+        break // jmp to the corresponding while end namespace
+
+        {
+            break // the same works for any nested namespace
+        }
+
+        while (cond) {
+            break // except for other nesting loops
+            return 0 // return must work even on the nested layers
+        }
+    }
+
+    do {
+
+    } while (cond)
+
+    // no nested functions allowed
+
+    res = f(0) // function call
+    res[0] = mem[stdin][0]
+    return res
+
+} // end of main variable namespace
+
+// any keyword is forbidden func name, also func name must start with lowercase letter and consist of just letters
+function f(arg) {
+    return arg
+}
+
+// variable namespace starts - count new variables, vn ends - delete all the new variables
