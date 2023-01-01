@@ -1,0 +1,1 @@
+all the classes in this directory are implementations of LocalMem interface (that is defined in base.cpp)

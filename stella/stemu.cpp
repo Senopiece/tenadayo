@@ -1,70 +1,18 @@
+#pragma once
+
 // Stella is a 1 bit multi-core processor
 
 #include <cstddef>
-#include <unordered_map>
 #include <thread>
-#include <vector>
-
-using namespace std;
-
-class BitForward {
-    public:
-        virtual bool operator[](size_t index) = 0;
-        virtual void operator[](size_t index, bool value) = 0;
-}
-
-class LocalMem {
-    public:
-        // also 2^resolution is sizeof(local[rand]), so the size of the shared memory is 2^(2^resolution)
-        virtual size_t get_resolution() = 0; // number of bits to index each bit of a local (e.g. sizeof(const) in local[rand][const])
-        virtual size_t get_indexing() = 0; // number of bits to index locals (e.g. sizeof(const) in local[const])
-        virtual void up_lms(size_t index) = 0; // increase lms
-        virtual void down_lms(size_t index) = 0; // decrease lms
-        virtual size_t operator[](size_t index) = 0;
-        virtual void operator[](size_t index, size_t value) = 0;
-}
-
-class InstructionBuffer final : public BitForward {
-    private:
-        void* buf;
-    public:
-        InstructionBuffer(const size_t size) {
-            buf = new void[size/8 + (size%8 == 0 ? 0 : 1)]; // assuming void size is 1 byte
-        }
-        ~InstructionBuffer() {
-            delete[] buf;
-        }
-
-        // TODO: check this
-        bool operator[](size_t index) {
-            return mem[index] & (1 << index);
-        } final
-
-        void operator[](size_t index, bool value) {
-            mem[index] = (mem[index] & ~(1 << index)) | (value << index);
-        } final
-
-        size_t read(size_t index, size_t size) {
-            // assert size <= sizeof(size_t)
-            size_t ret = 0;
-            for (size_t i = 0; i < size; i++) {
-                ret |= (this[index+i] << i); // TODO: optimize
-            }
-            return ret;
-        }
-
-        InstructionBuffer(InstructionBuffer const&) = delete;
-        void operator=(InstructionBuffer const&) = delete;
-
-        InstructionBuffer(InstructionBuffer&&) = delete;
-        void operator=(InstructionBuffer&&) = delete;
-}
+#include "vms/shared/lms/base.cpp"
+#include "vms/shared/bfs/base.cpp"
+#include "vms/shared/bfs/ib.cpp"
 
 struct CoreState {
     size_t ip; // instruction pointer
-    LocalMem local; // local memory (note that resolution changes number of bits for some instructions)
+    LocalMem* local; // local memory (note that resolution and indexing change number of bits for some instructions)
     BitForward* mem; // shared memory
-    InstructionBuffer ib;
+    InstructionBuffer* ib;
     size_t ibp; // instruction buffer pointer
 }
 
@@ -74,21 +22,12 @@ struct CoreState {
 // - id: core id
 // - state: core state
 jthread* spawnStellaCore(const size_t id, CoreState& state) {
-    return new jthread(
-        [id, &state](stop_token stoken) {
-            // size_t biggest_instruction_size = 0;
-            // if (5+2*(indexing + coverage) > 3+indexing+resolution+coverage) { // TODO: check other possibilities
-            //     biggest_instruction_size = 5+2*(indexing + coverage)
-            // }
-            // else {
-            //     biggest_instruction_size = 3+indexing+resolution+coverage;
-            // }
-            // InstructionBuffer ib<biggest_instruction_size>();
-
+    return new std::jthread(
+        [id, &state](std::stop_token stoken) {
             size_t& ip = state.ip;
-            LocalMem& local = state.local;
+            LocalMem& local = *state.local;
             BitForward& mem = *state.mem;
-            InstructionBuffer& ib = state.ib;
+            InstructionBuffer& ib = *state.ib;
             size_t& ibp = state.ibp;
 
             const size_t resolution = local.get_resolution();
@@ -268,98 +207,4 @@ jthread* spawnStellaCore(const size_t id, CoreState& state) {
             }
         }
     );
-}
-
-// TODO: separate file
-class Mem4096BitForward final: public BitForward {
-    private:
-        void* mem;
-    public:
-        static const size_t size = 4096;
-        Mem4096BitForward() {
-            mem = new void[size/8 + (size%8 == 0 ? 0 : 1)]; // assuming void size is 1 byte
-        }
-        ~Mem4096BitForward() {
-            delete[] mem;
-        }
-        // TODO: mutex on operations with bits within 1 byte
-        // TODO: check this
-        bool operator[](size_t index) const { return mem[index] & (1 << index); } final
-        void operator[](size_t index, bool value) { mem[index] = (mem[index] & ~(1 << index)) | (value << index); } final
-
-        // TODO: copy and move constructors, so no mem leak and twice free
-}
-
-// TODO: separate file
-// TODO: any out of the bound is 0 result
-class LocalMem1024x32 final: public LocalMem {
-        static const size_t lms_mask = 0xffffffff >> 54;
-    private:
-        vector<size_t> mem;
-        size_t lms; // local memory shift
-    public:
-        LocalMem1024x32(const size_t size) : mem(size) {
-            // assert 32 <= sizeof(size_t)*8 // to support each local at 32 bit
-            // assert 10 <= sizeof(size_t)*8 // to support 1024 locals and 10-bit lms
-        }
-
-        ~LocalMem1024x32() {
-            // it does nothing here,
-            // so it does not free the mem because it was provided externally and is expected to be managed to free externally
-        }
-
-        size_t get_resolution() { return 5; } final // 2^5 = 32 bits in each local
-        size_t get_indexing() { return 10; } final // 2^10 = 1024 locals
-
-        // index : 10 bit
-        // value : 32 bit
-
-        void up_lms(size_t index) { lms = (lms + value) & lms_mask; } final
-        void down_lms(size_t index) { lms = (lms - value) & lms_mask; } final
-        size_t operator[](size_t index) { return mem[(lms + index) & lms_mask]; } final // -> value (32 bit)
-        void operator[](size_t index, size_t value) { mem[(lms + index) & lms_mask] = value; } final
-
-        // TODO: maybe copy and move constructors
-}
-
-// TODO: separate file
-// TODO: any out of the bound is 0 result
-class BlockMemManager final: public BitForward {
-    private:
-        static const size_t block_size = 4096;
-        unordered_map<size_t, *BitForward> *mem;
-
-    public:
-        MemManager(unordered_map<size_t, *BitForward> const& mem) {
-            mem = &mem;
-        }
-
-        ~MemManager() {
-            // it does nothing here,
-            // so it does not free the mem because it was provided externally and is expected to be managed to free externally
-        }
-
-        bool operator[](size_t index) const {
-            size_t block_id = index/block_size;
-            size_t block_offset = index%block_size;
-
-            if (!mem->contains(block_id)) {
-                mem->insert({block_id, new Mem4096BitForward()});
-            }
-
-            return (*mem)[block_id][block_offset];
-        }
-
-        void operator[](size_t index, bool value) {
-            size_t block_id = index/block_size;
-            size_t block_offset = index%block_size;
-
-            if (!mem->contains(block_id)) {
-                mem->insert({block_id, new Mem4096BitForward()});
-            }
-
-            (*mem)[block_id][block_offset] = value;
-        }
-
-        // TODO: maybe copy and move constructors
 }
