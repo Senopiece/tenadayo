@@ -3,7 +3,7 @@
 #include "base.cpp"
 #include <vector>
 
-class Mem4096BitForward final: public BitForward {
+class Mem4096BitForward: public BitForward {
     private:
         std::vector<char> mem; // char size is 1 byte
     public:
@@ -13,8 +13,8 @@ class Mem4096BitForward final: public BitForward {
 
         // TODO: mutex on operations with bits within 1 byte
         // TODO: check this
-        bool operator[](size_t index) const { return mem[index] & (1 << index); } final
-        void operator[](size_t index, bool value) { mem[index] = (mem[index] & ~(1 << index)) | (value << index); } final
+        bool operator[](size_t index) const { return mem[index] & (1 << index); }
+        void operator[](size_t index, bool value) { mem[index] = (mem[index] & ~(1 << index)) | (value << index); }
 
         char getByte(size_t index) const { return mem[index]; }
         void setByte(size_t index, char value) { mem[index] = value; }

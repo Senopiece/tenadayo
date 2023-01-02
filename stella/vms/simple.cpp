@@ -1,8 +1,51 @@
 #pragma once
 
+#include <iostream>
+#include <string>
+#include <bitset>
 #include "../stemu.cpp"
 #include "shared/lms/lm1024x32.cpp"
 #include "shared/bfs/managers/block4096.cpp"
+
+// controlled states for contains stdin/stdout bits
+class Mem4096ControlledBitForward: public Mem4096BitForward {
+    // 4095 - stdin
+    // 4094 - request stdin (put 1 here to request external device to put stdin bit into 4095, when the operation is done, external device rests 4094 to zero)
+    // 4093 - stdout
+    // 4092 - submit stdout (put 1 here to mark that stdout bit in 4093 is ready to be read by external device, when the operation is done, external device rests 4092 to zero)
+
+    // note that core is inactive when 4094 or 4092 is 1, so any stdout and stdin are blocking
+    // but this allows not to use polling of 4094 and 4092 bits since they both must be zeros for the core to be active
+
+    private:
+        std::string stdin_buf;
+        size_t stdin_buf_p;
+
+        std::bitset<8> stdout_buf;
+        size_t stdout_buf_p;
+
+    public:
+        bool operator[](size_t index) const {
+            if (index == 4094) {
+                // send stdin
+                if stdin_buf_p == stdin_buf.size()*8:
+                    cin >> stdin_buf;
+                    stdin_buf_p = 0;
+                Mem4096BitForward::operator[](4095, (stdin_buf[stdin_buf_p/8] >> (stdin_buf_p % 8)) & 1);
+                stdin_buf_p++;
+                return false;
+            }
+            if (index == 4092) {
+                // swallow stdout
+                stdout_buf[stdout_buf_p++] = Mem4096BitForward::operator[](4093);
+                if stdout_buf_p == 8:
+                    std::cout << static_cast<unsigned char>(stdout_buf);
+                    stdout_buf_p = 0
+                return false;
+            }
+            return Mem4096BitForward::operator[](d);
+        }
+}
 
 // the simplest single core stella machine
 // specs:
@@ -30,7 +73,9 @@ void scsmExec(std::vector<char> const& program) {
         }
     }
 
-    // TODO: fwd stdin/stdout
+    // fwd stdin/stdout
+    // in the very end of the address space
+    mem.inject(1048575, Mem4096ControlledBitForward());
 
     CoreState state = CoreState(
         0, // ip

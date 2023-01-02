@@ -9,9 +9,9 @@ struct IndexDecomposition {
     size_t block_offset;
 };
 
-class Block4096MemManager final: public BitForward {
+class Block4096MemManager: public BitForward {
     private:
-        std::unordered_map<size_t, Mem4096BitForward*> mem; // mem[block_id][in_block_offset]
+        std::unordered_map<size_t, Mem4096BitForward> mem; // mem[block_id][in_block_offset]
 
     public:
         static const size_t block_size = 4096;
@@ -20,13 +20,13 @@ class Block4096MemManager final: public BitForward {
 
         bool operator[](size_t index) {
             IndexDecomposition d = touch(index);
-            return (*mem)[d.block_id][d.block_offset];
-        } final
+            return mem[d.block_id][d.block_offset];
+        }
 
         void operator[](size_t index, bool value) {
             IndexDecomposition d = touch(index);
-            (*mem)[d.block_id][d.block_offset] = value;
-        } final
+            mem[d.block_id][d.block_offset] = value;
+        }
 
         IndexDecomposition touch(size_t index) {
             size_t block_id = index/block_size;
@@ -36,15 +36,19 @@ class Block4096MemManager final: public BitForward {
         }
 
         Mem4096BitForward* getBlock(size_t block_id) {
-            if (!mem->contains(block_id)) {
+            if (!mem.contains(block_id)) {
                 // TODO: mutex here
-                mem->insert({block_id, new Mem4096BitForward()});
+                mem.insert({block_id, Mem4096BitForward()});
             }
-            return (*mem)[block_id];
+            return mem[block_id];
+        }
+
+        void inject(size_t block_id, Mem4096BitForward block) {
+            mem.insert({block_id, block});
         }
 
         bool has(size_t block_id) {
-            return mem->contains(block_id);
+            return mem.contains(block_id);
         }
 
         // im ok with default implementations
